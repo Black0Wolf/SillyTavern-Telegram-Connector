@@ -46,7 +46,7 @@ function getSettings() {
 function updateStatus(message, color) {
     const statusEl = document.getElementById('telegram_connection_status');
     if (statusEl) {
-        statusEl.textContent = `状态： ${message}`;
+        statusEl.textContent = `Status: ${message}`;
         statusEl.style.color = color;
     }
 }
@@ -59,24 +59,24 @@ function reloadPage() {
 // 连接到WebSocket服务器
 function connect() {
     if (ws && ws.readyState === WebSocket.OPEN) {
-        console.log('[Telegram Bridge] 已连接');
+        console.log('[Telegram Bridge] Already connected');
         return;
     }
 
     const settings = getSettings();
     if (!settings.bridgeUrl) {
-        updateStatus('URL 未设置！', 'red');
+        updateStatus('URL not set!', 'red');
         return;
     }
 
-    updateStatus('连接中...', 'orange');
-    console.log(`[Telegram Bridge] 正在连接 ${settings.bridgeUrl}...`);
+    updateStatus('Connecting...', 'orange');
+    console.log(`[Telegram Bridge] Connecting to ${settings.bridgeUrl}...`);
 
     ws = new WebSocket(settings.bridgeUrl);
 
     ws.onopen = () => {
-        console.log('[Telegram Bridge] 连接成功！');
-        updateStatus('已连接', 'green');
+        console.log('[Telegram Bridge] Connected!');
+        updateStatus('Connected', 'green');
     };
 
     ws.onmessage = async (event) => {
@@ -86,7 +86,7 @@ function connect() {
 
             // --- 用户消息处理 ---
             if (data.type === 'user_message') {
-                console.log('[Telegram Bridge] 收到用户消息。', data);
+                console.log('[Telegram Bridge] Received user message.', data);
 
                 // 存储当前处理的chatId
                 lastProcessedChatId = data.chatId;
@@ -141,14 +141,14 @@ function connect() {
                     setExternalAbortController(abortController);
                     await Generate('normal', { signal: abortController.signal });
                 } catch (error) {
-                    console.error("[Telegram Bridge] Generate() 错误:", error);
+                    console.error("[Telegram Bridge] Generate() error:", error);
 
                     // a. 从SillyTavern聊天记录中删除导致错误的用户消息
                     await deleteLastMessage();
-                    console.log('[Telegram Bridge] 已删除导致错误的用户消息。');
+                    console.log('[Telegram Bridge] Deleted the user message that caused the error.');
 
                     // b. 准备并发送错误信息到服务端
-                    const errorMessage = `抱歉，AI生成回复时遇到错误。\n您的上一条消息已被撤回，请重试或发送不同内容。\n\n错误详情: ${error.message || '未知错误'}`;
+                    const errorMessage = `Sorry, the AI encountered an error while generating a reply.\nYour last message has been withdrawn — please try again or send something different.\n\nError details: ${error.message || 'Unknown error'}`;
                     if (ws && ws.readyState === WebSocket.OPEN) {
                         ws.send(JSON.stringify({
                             type: 'error_message',
@@ -167,9 +167,9 @@ function connect() {
 
             // --- 系统命令处理 ---
             if (data.type === 'system_command') {
-                console.log('[Telegram Bridge] 收到系统命令', data);
+                console.log('[Telegram Bridge] Received system command', data);
                 if (data.command === 'reload_ui_only') {
-                    console.log('[Telegram Bridge] 正在刷新UI...');
+                    console.log('[Telegram Bridge] Reloading UI...');
                     setTimeout(reloadPage, 500);
                 }
                 return;
@@ -177,14 +177,14 @@ function connect() {
 
             // --- 执行命令处理 ---
             if (data.type === 'execute_command') {
-                console.log('[Telegram Bridge] 执行命令', data);
+                console.log('[Telegram Bridge] Executing command', data);
 
                 // 显示“输入中”状态
                 if (ws && ws.readyState === WebSocket.OPEN) {
                     ws.send(JSON.stringify({ type: 'typing_action', chatId: data.chatId }));
                 }
 
-                let replyText = '命令执行失败，请稍后重试。';
+                let replyText = 'Command failed. Please try again later.';
 
                 // 直接调用全局的 SillyTavern.getContext()
                 const context = SillyTavern.getContext();
@@ -194,26 +194,26 @@ function connect() {
                     switch (data.command) {
                         case 'new':
                             await doNewChat({ deleteCurrentChat: false });
-                            replyText = '新的聊天已经开始。';
+                            replyText = 'A new chat has started.';
                             commandSuccess = true;
                             break;
                         case 'listchars': {
                             const characters = context.characters.slice(1);
                             if (characters.length > 0) {
-                                replyText = '可用角色列表：\n\n';
+                                replyText = 'Available characters:\n\n';
                                 characters.forEach((char, index) => {
                                     replyText += `${index + 1}. /switchchar_${index + 1} - ${char.name}\n`;
                                 });
-                                replyText += '\n使用 /switchchar_数字 或 /switchchar 角色名称 来切换角色';
+                                replyText += '\nUse /switchchar_<number> or /switchchar <character name> to switch characters';
                             } else {
-                                replyText = '没有找到可用角色。';
+                                replyText = 'No available characters found.';
                             }
                             commandSuccess = true;
                             break;
                         }
                         case 'switchchar': {
                             if (!data.args || data.args.length === 0) {
-                                replyText = '请提供角色名称或序号。用法: /switchchar <角色名称> 或 /switchchar_数字';
+                                replyText = 'Please provide a character name or number. Usage: /switchchar <character name> or /switchchar_<number>';
                                 break;
                             }
                             const targetName = data.args.join(' ');
@@ -223,45 +223,45 @@ function connect() {
                             if (targetChar) {
                                 const charIndex = characters.indexOf(targetChar);
                                 await selectCharacterById(charIndex);
-                                replyText = `已成功切换到角色 "${targetName}"。`;
+                                replyText = `Switched to character "${targetName}".`;
                                 commandSuccess = true;
                             } else {
-                                replyText = `角色 "${targetName}" 未找到。`;
+                                replyText = `Character "${targetName}" not found.`;
                             }
                             break;
                         }
                         case 'listchats': {
                             if (context.characterId === undefined) {
-                                replyText = '请先选择一个角色。';
+                                replyText = 'Please select a character first.';
                                 break;
                             }
                             const chatFiles = await getPastCharacterChats(context.characterId);
                             if (chatFiles.length > 0) {
-                                replyText = '当前角色的聊天记录：\n\n';
+                                replyText = 'Chat history for the current character:\n\n';
                                 chatFiles.forEach((chat, index) => {
                                     const chatName = chat.file_name.replace('.jsonl', '');
                                     replyText += `${index + 1}. /switchchat_${index + 1} - ${chatName}\n`;
                                 });
-                                replyText += '\n使用 /switchchat_数字 或 /switchchat 聊天名称 来切换聊天';
+                                replyText += '\nUse /switchchat_<number> or /switchchat <chat name> to switch chats';
                             } else {
-                                replyText = '当前角色没有任何聊天记录。';
+                                replyText = 'The current character has no chat history.';
                             }
                             commandSuccess = true;
                             break;
                         }
                         case 'switchchat': {
                             if (!data.args || data.args.length === 0) {
-                                replyText = '请提供聊天记录名称。用法： /switchchat <聊天记录名称>';
+                                replyText = 'Please provide a chat name. Usage: /switchchat <chat name>';
                                 break;
                             }
                             const targetChatFile = `${data.args.join(' ')}`;
                             try {
                                 await openCharacterChat(targetChatFile);
-                                replyText = `已加载聊天记录： ${targetChatFile}`;
+                                replyText = `Chat loaded: ${targetChatFile}`;
                                 commandSuccess = true;
                             } catch (err) {
                                 console.error(err);
-                                replyText = `加载聊天记录 "${targetChatFile}" 失败。请确认名称完全正确。`;
+                                replyText = `Failed to load chat "${targetChatFile}". Please make sure the name is exactly correct.`;
                             }
                             break;
                         }
@@ -275,10 +275,10 @@ function connect() {
                                     const targetChar = characters[index];
                                     const charIndex = context.characters.indexOf(targetChar);
                                     await selectCharacterById(charIndex);
-                                    replyText = `已切换到角色 "${targetChar.name}"。`;
+                                    replyText = `Switched to character "${targetChar.name}".`;
                                     commandSuccess = true;
                                 } else {
-                                    replyText = `无效的角色序号: ${index + 1}。请使用 /listchars 查看可用角色。`;
+                                    replyText = `Invalid character number: ${index + 1}. Use /listchars to see available characters.`;
                                 }
                                 break;
                             }
@@ -286,7 +286,7 @@ function connect() {
                             const chatMatch = data.command.match(/^switchchat_(\d+)$/);
                             if (chatMatch) {
                                 if (context.characterId === undefined) {
-                                    replyText = '请先选择一个角色。';
+                                    replyText = 'Please select a character first.';
                                     break;
                                 }
                                 const index = parseInt(chatMatch[1]) - 1;
@@ -297,24 +297,24 @@ function connect() {
                                     const chatName = targetChat.file_name.replace('.jsonl', '');
                                     try {
                                         await openCharacterChat(chatName);
-                                        replyText = `已加载聊天记录： ${chatName}`;
+                                        replyText = `Chat loaded: ${chatName}`;
                                         commandSuccess = true;
                                     } catch (err) {
                                         console.error(err);
-                                        replyText = `加载聊天记录失败。`;
+                                        replyText = `Failed to load chat.`;
                                     }
                                 } else {
-                                    replyText = `无效的聊天记录序号: ${index + 1}。请使用 /listchats 查看可用聊天记录。`;
+                                    replyText = `Invalid chat number: ${index + 1}. Use /listchats to see available chats.`;
                                 }
                                 break;
                             }
 
-                            replyText = `未知命令: /${data.command}。使用 /help 查看所有命令。`;
+                            replyText = `Unknown command: /${data.command}. Use /help to see all commands.`;
                         }
                     }
                 } catch (error) {
-                    console.error('[Telegram Bridge] 执行命令时出错:', error);
-                    replyText = `执行命令时出错: ${error.message || '未知错误'}`;
+                    console.error('[Telegram Bridge] Error executing command:', error);
+                    replyText = `Error executing command: ${error.message || 'Unknown error'}`;
                 }
 
                 // 发送命令执行结果
@@ -334,22 +334,22 @@ function connect() {
                 return;
             }
         } catch (error) {
-            console.error('[Telegram Bridge] 处理请求时发生错误：', error);
+            console.error('[Telegram Bridge] Error handling request:', error);
             if (data && data.chatId && ws && ws.readyState === WebSocket.OPEN) {
-                ws.send(JSON.stringify({ type: 'error_message', chatId: data.chatId, text: '处理您的请求时发生了一个内部错误。' }));
+                ws.send(JSON.stringify({ type: 'error_message', chatId: data.chatId, text: 'An internal error occurred while processing your request.' }));
             }
         }
     };
 
     ws.onclose = () => {
-        console.log('[Telegram Bridge] 连接已关闭。');
-        updateStatus('连接已断开', 'red');
+        console.log('[Telegram Bridge] Connection closed.');
+        updateStatus('Disconnected', 'red');
         ws = null;
     };
 
     ws.onerror = (error) => {
-        console.error('[Telegram Bridge] WebSocket 错误：', error);
-        updateStatus('连接错误', 'red');
+        console.error('[Telegram Bridge] WebSocket error:', error);
+        updateStatus('Connection error', 'red');
         ws = null;
     };
 }
@@ -362,11 +362,11 @@ function disconnect() {
 
 // 扩展加载时执行的函数
 jQuery(async () => {
-    console.log('[Telegram Bridge] 正在尝试加载设置 UI...');
+    console.log('[Telegram Bridge] Loading settings UI...');
     try {
         const settingsHtml = await $.get(`/scripts/extensions/third-party/${MODULE_NAME}/settings.html`);
         $('#extensions_settings').append(settingsHtml);
-        console.log('[Telegram Bridge] 设置 UI 应该已经被添加。');
+        console.log('[Telegram Bridge] Settings UI should now be added.');
 
         const settings = getSettings();
         $('#telegram_bridge_url').val(settings.bridgeUrl);
@@ -383,7 +383,7 @@ jQuery(async () => {
             const settings = getSettings();
             settings.autoConnect = $(this).prop('checked');
             // 确保调用saveSettingsDebounced保存设置
-            console.log(`[Telegram Bridge] 自动连接设置已更改为: ${settings.autoConnect}`);
+            console.log(`[Telegram Bridge] Auto-connect setting changed to: ${settings.autoConnect}`);
             saveSettingsDebounced();
         });
 
@@ -391,14 +391,14 @@ jQuery(async () => {
         $('#telegram_disconnect_button').on('click', disconnect);
 
         if (settings.autoConnect) {
-            console.log('[Telegram Bridge] 自动连接已启用，正在连接...');
+            console.log('[Telegram Bridge] Auto-connect enabled, connecting...');
             connect();
         }
 
     } catch (error) {
-        console.error('[Telegram Bridge] 加载设置 HTML 失败。', error);
+        console.error('[Telegram Bridge] Failed to load settings HTML.', error);
     }
-    console.log('[Telegram Bridge] 扩展已加载。');
+    console.log('[Telegram Bridge] Extension loaded.');
 });
 
 // 全局事件监听器，用于最终消息更新
@@ -436,7 +436,7 @@ function handleFinalMessage(lastMessageIdInChatArray) {
                 tempDiv.innerHTML = renderedText;
                 renderedText = tempDiv.textContent;
 
-                console.log(`[Telegram Bridge] 捕获到最终渲染文本，准备发送更新到 chatId: ${lastProcessedChatId}`);
+                console.log(`[Telegram Bridge] Captured final rendered text, sending update to chatId: ${lastProcessedChatId}`);
 
                 // 判断是流式还是非流式响应
                 if (isStreamingMode) {
